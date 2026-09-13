@@ -3,10 +3,13 @@ name: Deploy n8n
 on:
   push:
     branches: [main]
-  workflow_dispatch:   # allow manual trigger
+  workflow_dispatch:
+
+env:
+  N8N_URL: https://n8n-20th.onrender.com
 
 jobs:
-  # ── Lint & validate ─────────────────────────────────────────
+  # ── Validate configs ─────────────────────────────────────────
   validate:
     name: Validate configs
     runs-on: ubuntu-latest
@@ -17,19 +20,13 @@ jobs:
         run: docker compose -f docker-compose.yml config --quiet
 
       - name: Validate Kubernetes manifests
-        uses: azure/k8s-lint@v1
-        with:
-          manifests: |
-            k8s/namespace.yaml
-            k8s/configmap.yaml
-            k8s/pvc.yaml
-            k8s/deployment.yaml
-            k8s/service.yaml
-            k8s/ingress.yaml
-        continue-on-error: true   # don't block deploy if k8s lint isn't configured
+        run: |
+          curl -sLO https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+          tar xf kubeval-linux-amd64.tar.gz
+          ./kubeval k8s/*.yaml --ignore-missing-schemas || true
 
-  # ── Deploy to Render.com ─────────────────────────────────────
-  deploy-render:
+  # ── Deploy to Render ─────────────────────────────────────────
+  deploy:
     name: Deploy to Render
     runs-on: ubuntu-latest
     needs: validate
@@ -37,24 +34,42 @@ jobs:
     steps:
       - name: Trigger Render deploy hook
         run: |
-          curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            --fail
-        # Set RENDER_DEPLOY_HOOK_URL in GitHub repo secrets:
-        # Render Dashboard → Service → Settings → Deploy Hooks → Create Hook
+          curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" --fail
+          echo "✅ Render deploy triggered"
 
-  # ── Notify on success ────────────────────────────────────────
-  notify:
-    name: Notify
+  # ── Health check after deploy ─────────────────────────────────
+  healthcheck:
+    name: Health Check
     runs-on: ubuntu-latest
-    needs: [validate, deploy-render]
+    needs: deploy
+    steps:
+      - name: Wait for Render to spin up (90s)
+        run: sleep 90
+
+      - name: Ping /healthz
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.N8N_URL }}/healthz)
+          echo "Health check status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Health check failed! n8n returned HTTP $STATUS"
+            exit 1
+          fi
+          echo "✅ n8n is healthy at ${{ env.N8N_URL }}"
+
+  # ── Summary ───────────────────────────────────────────────────
+  notify:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [validate, deploy, healthcheck]
     if: always()
     steps:
-      - name: Report status
+      - name: Report
         run: |
-          if [ "${{ needs.deploy-render.result }}" == "success" ]; then
-            echo "✅ Deploy succeeded"
+          echo "Validate : ${{ needs.validate.result }}"
+          echo "Deploy   : ${{ needs.deploy.result }}"
+          echo "Health   : ${{ needs.healthcheck.result }}"
+          if [[ "${{ needs.healthcheck.result }}" == "success" ]]; then
+            echo "🚀 Deployment successful — ${{ env.N8N_URL }}"
           else
-            echo "❌ Deploy failed or skipped"
-            exit 1
+            echo "⚠️  Deployment may have issues — check Render dashboard"
           fi
