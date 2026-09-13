@@ -5,16 +5,11 @@ services:
     dockerfilePath: ./Dockerfile
     plan: starter
     healthCheckPath: /healthz
-    # Render injects $PORT — n8n must bind to it, not a hardcoded port.
-    # The startCommand overrides the image entrypoint to pass $PORT at runtime.
-    startCommand: n8n start --port $PORT
     envVars:
       - key: N8N_HOST
         value: 0.0.0.0
-      # N8N_PORT is set dynamically from $PORT by startCommand above;
-      # we still export it so n8n's internal URL builder is consistent.
       - key: N8N_PORT
-        fromValue: $PORT
+        value: 5678
       - key: N8N_PROTOCOL
         value: https
       - key: NODE_ENV
