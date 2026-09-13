@@ -1,0 +1,525 @@
+{
+  "name": "AI OS — Bootstrap & Init",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "699e9cdc-c3d0-4b50-a251-d2529b40d792",
+      "name": "Manual Run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "started_at",
+              "name": "started_at",
+              "type": "string",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c79fe64f-2e20-4c6d-a29c-3f1181cab797",
+      "name": "Init Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\n-- Memory (long-term memory store)\nCREATE TABLE IF NOT EXISTS ai_os_memory (\n  id BIGSERIAL PRIMARY KEY,\n  timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),\n  category TEXT,\n  title TEXT,\n  content TEXT,\n  tags TEXT,\n  source TEXT,\n  importance NUMERIC,\n  embedding_placeholder TEXT\n);\n\n-- Knowledge base\nCREATE TABLE IF NOT EXISTS ai_os_knowledge (\n  id BIGSERIAL PRIMARY KEY,\n  topic TEXT,\n  question TEXT,\n  answer TEXT,\n  source TEXT,\n  updated TIMESTAMPTZ NOT NULL DEFAULT now(),\n  confidence NUMERIC\n);\n\n-- Tasks\nCREATE TABLE IF NOT EXISTS ai_os_tasks (\n  task_id TEXT PRIMARY KEY,\n  title TEXT,\n  description TEXT,\n  priority TEXT,\n  status TEXT DEFAULT 'open',\n  owner TEXT,\n  deadline TIMESTAMPTZ,\n  created TIMESTAMPTZ NOT NULL DEFAULT now(),\n  completed TIMESTAMPTZ\n);\n\n-- Contacts\nCREATE TABLE IF NOT EXISTS ai_os_contacts (\n  id BIGSERIAL PRIMARY KEY,\n  name TEXT,\n  company TEXT,\n  phone TEXT,\n  email TEXT,\n  telegram TEXT,\n  whatsapp TEXT,\n  notes TEXT\n);\n\n-- Logs\nCREATE TABLE IF NOT EXISTS ai_os_logs (\n  id BIGSERIAL PRIMARY KEY,\n  timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),\n  workflow TEXT,\n  module TEXT,\n  action TEXT,\n  status TEXT,\n  execution_time NUMERIC,\n  error TEXT\n);\n\n-- Config (env-like key/value store)\nCREATE TABLE IF NOT EXISTS ai_os_config (\n  key TEXT PRIMARY KEY,\n  value TEXT,\n  updated TIMESTAMPTZ NOT NULL DEFAULT now()\n);\n\n-- Execution history\nCREATE TABLE IF NOT EXISTS ai_os_executions (\n  id TEXT PRIMARY KEY,\n  workflow TEXT,\n  status TEXT,\n  started TIMESTAMPTZ,\n  finished TIMESTAMPTZ,\n  error TEXT\n);\n\n-- Seed default config (idempotent)\nINSERT INTO ai_os_config (key, value) VALUES\n  ('default_notification_channel', 'telegram'),\n  ('timezone', 'Africa/Nairobi'),\n  ('ai_model', 'gpt-4o-mini')\nON CONFLICT (key) DO NOTHING;\n",
+        "options": {
+          "queryBatching": "single"
+        }
+      },
+      "id": "affcee85-1954-4b3f-8606-d3c3e90c4bc4",
+      "name": "Init DB Schema",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        448,
+        96
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "pWWYe9VpyIDwRFN0",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "queryString": "AI_OS",
+        "returnAll": true,
+        "filter": {
+          "whatToSearch": "folders"
+        },
+        "options": {}
+      },
+      "id": "d9233957-67d5-47a6-a731-bcf4dde4130c",
+      "name": "Search AI_OS Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        672,
+        96
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Xi7uGUQpDOQMReqG",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const found = $input.all().filter(i => i.json && i.json.id && i.json.name === 'AI_OS');\nif (found.length > 0) {\n  return [{ json: { found: true, rootId: found[0].json.id } }];\n}\nreturn [{ json: { found: false, rootId: '' } }];"
+      },
+      "id": "611d7f93-974a-461c-bef9-6dc9be0de0a0",
+      "name": "Resolve Root Exists",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "found",
+              "leftValue": "={{ $json.rootId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "724a90fd-39b1-4c18-a03f-3ec5623913aa",
+      "name": "Root Folder Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "parentId",
+              "name": "parentId",
+              "type": "string",
+              "value": "={{ $json.rootId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3274686a-7d53-467c-8671-f1d11bf3a586",
+      "name": "Use Existing Root",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1344,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "AI_OS",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      },
+      "id": "e1e55431-5888-4464-b45d-64e4b58b0288",
+      "name": "Create AI_OS Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1344,
+        192
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Xi7uGUQpDOQMReqG",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "a4c23d51-cf50-4649-a241-06b1c0f43711",
+      "name": "Called By Other Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Section 1 — Database Schema\nCreates all AI OS tables with CREATE TABLE IF NOT EXISTS and seeds default config rows. Idempotent and safe to re-run. Fails soft (onError continue) so Drive setup still runs.",
+        "height": 200,
+        "width": 300
+      },
+      "id": "683e1e5f-6ed3-464a-b632-69603317a2ff",
+      "name": "Sticky Note bd90aa80",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Section 2 — Drive Folder Tree\nSearches for AI_OS/ and its subfolders, creating only the ones that are missing (Projects, Documents, Images, Logs, Backups).",
+        "height": 200,
+        "width": 300
+      },
+      "id": "8486c15c-e848-40d2-9d90-18a824573803",
+      "name": "Sticky Note 60a1bae2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Section 3 — Summary\nReturns a JSON provisioning report of tables verified and folders ensured.",
+        "height": 200,
+        "width": 300
+      },
+      "id": "125aae06-0ccd-4193-a85d-a3403f25c8c7",
+      "name": "Sticky Note 3c38248b",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        256
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "d4c010ed-6162-42a3-af69-07e0a1d4ed4a",
+      "name": "Merge Root Path",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1568,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let parentId = null;\nfor (const it of $input.all()) {\n  const j = it.json || {};\n  const cand = j.parentId || j.id || null;\n  if (cand) { parentId = cand; break; }\n}\nreturn [{ json: { parentId } }];"
+      },
+      "id": "b665f221-dc50-440b-9c4f-aca627c215fe",
+      "name": "Get Parent Folder ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "=mimeType = 'application/vnd.google-apps.folder' and '{{ $json.parentId }}' in parents and trashed = false",
+        "returnAll": true,
+        "filter": {},
+        "options": {}
+      },
+      "id": "19201e6f-4752-421e-b899-1a5449682426",
+      "name": "Search Subfolders",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2016,
+        0
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Xi7uGUQpDOQMReqG",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const parentId = $('Get Parent Folder ID').first().json.parentId;\nconst desired = ['Projects', 'Documents', 'Images', 'Logs', 'Backups'];\nconst existing = $input.all().map(i => i.json && i.json.name).filter(Boolean);\nconst missing = desired.filter(n => !existing.includes(n));\nreturn missing.map(name => ({ json: { name, parentId } }));"
+      },
+      "id": "eaf9f854-d707-46df-afd9-ee2a11959cd7",
+      "name": "Compute Missing Subfolders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $json.name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.parentId }}"
+        },
+        "options": {}
+      },
+      "id": "3d12a634-4d8c-47ae-9d27-f37eb8e49b57",
+      "name": "Create Missing Subfolders",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2464,
+        0
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "Xi7uGUQpDOQMReqG",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: {\n  status: 'ok',\n  message: 'AI OS bootstrap complete (idempotent — safe to re-run).',\n  database: {\n    initialized: true,\n    tables: ['ai_os_memory','ai_os_knowledge','ai_os_tasks','ai_os_contacts','ai_os_logs','ai_os_config','ai_os_executions']\n  },\n  drive: {\n    rootFolder: 'AI_OS',\n    parentId: $('Get Parent Folder ID').first().json.parentId,\n    subfolders: ['Projects','Documents','Images','Logs','Backups']\n  }\n} }];"
+      },
+      "id": "3e7d1485-55d9-4b2c-ac62-1a57b183b7be",
+      "name": "Provisioning Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        192
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Run": {
+      "main": [
+        [
+          {
+            "node": "Init Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Context": {
+      "main": [
+        [
+          {
+            "node": "Init DB Schema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init DB Schema": {
+      "main": [
+        [
+          {
+            "node": "Search AI_OS Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search AI_OS Folder": {
+      "main": [
+        [
+          {
+            "node": "Resolve Root Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Root Exists": {
+      "main": [
+        [
+          {
+            "node": "Root Folder Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Root Folder Exists?": {
+      "main": [
+        [
+          {
+            "node": "Use Existing Root",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create AI_OS Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Existing Root": {
+      "main": [
+        [
+          {
+            "node": "Merge Root Path",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create AI_OS Folder": {
+      "main": [
+        [
+          {
+            "node": "Merge Root Path",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Called By Other Workflow": {
+      "main": [
+        [
+          {
+            "node": "Init Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Root Path": {
+      "main": [
+        [
+          {
+            "node": "Get Parent Folder ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Parent Folder ID": {
+      "main": [
+        [
+          {
+            "node": "Search Subfolders",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Provisioning Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Subfolders": {
+      "main": [
+        [
+          {
+            "node": "Compute Missing Subfolders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Missing Subfolders": {
+      "main": [
+        [
+          {
+            "node": "Create Missing Subfolders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6ad974bd-9e0b-473d-aaf0-247e2bab2ff8",
+  "meta": {
+    "instanceId": "9430d450e340198cded0b384039dea7636f952dc5d5febcdd94efc11e35053ab"
+  },
+  "nodeGroups": [],
+  "id": "iyrD0P9NxL6KnXRs",
+  "tags": []
+}

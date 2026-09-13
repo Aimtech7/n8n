@@ -1,0 +1,418 @@
+{
+  "name": "AI OS — Memory Service (sub-workflow)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "operation"
+            },
+            {
+              "name": "category"
+            },
+            {
+              "name": "title"
+            },
+            {
+              "name": "content"
+            },
+            {
+              "name": "tags"
+            },
+            {
+              "name": "source"
+            },
+            {
+              "name": "importance",
+              "type": "number"
+            },
+            {
+              "name": "query"
+            },
+            {
+              "name": "limit",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "390d646f-1456-4196-b6b1-70728005ba67",
+      "name": "Memory Request",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json || {};\nreturn [{ json: {\n  operation: (j.operation || '').toLowerCase(),\n  category: j.category || '',\n  title: j.title || '',\n  content: j.content || '',\n  tags: j.tags || '',\n  source: j.source || '',\n  importance: (j.importance === undefined || j.importance === null || j.importance === '') ? 0 : j.importance,\n  query: j.query || '',\n  limit: (j.limit === undefined || j.limit === null || j.limit === '') ? 10 : j.limit\n} }];"
+      },
+      "id": "6c5abd56-ee17-4910-816d-1fbbd6603f57",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.operation }}",
+                    "rightValue": "store",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "store"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.operation }}",
+                    "rightValue": "recall",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "recall"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.operation }}",
+                    "rightValue": "search",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "search"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "unknown"
+        }
+      },
+      "id": "4417ca6c-a8bf-4f38-b037-0e5d365db68a",
+      "name": "Route Operation",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ai_os_memory (category, title, content, tags, source, importance) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+        "options": {
+          "queryReplacement": "={{ $json.category }},{{ $json.title }},{{ $json.content }},{{ $json.tags }},{{ $json.source }},{{ $json.importance }}"
+        }
+      },
+      "id": "2e57e8b0-ded4-4557-b266-d35b4c832950",
+      "name": "Store Memory",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        672,
+        0
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "pWWYe9VpyIDwRFN0",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "id": "5051b9bc-7429-4ece-9e08-325aa8aa5c32",
+      "name": "Collect",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        896,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM ai_os_memory WHERE ($1 = '' OR category = $1) ORDER BY timestamp DESC LIMIT $2",
+        "options": {
+          "queryReplacement": "={{ $json.category }},{{ $json.limit }}"
+        }
+      },
+      "id": "77e4616b-5e27-4acc-9a0d-905e872f2640",
+      "name": "Recall Memory",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        672,
+        192
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "pWWYe9VpyIDwRFN0",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM ai_os_memory WHERE (title ILIKE '%' || $1 || '%' OR content ILIKE '%' || $1 || '%' OR tags ILIKE '%' || $1 || '%') ORDER BY importance DESC NULLS LAST, timestamp DESC LIMIT $2",
+        "options": {
+          "queryReplacement": "={{ $json.query }},{{ $json.limit }}"
+        }
+      },
+      "id": "0a9b828f-52d1-4c57-a296-7c94be30c247",
+      "name": "Search Memory",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        672,
+        384
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "pWWYe9VpyIDwRFN0",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ok",
+              "name": "ok",
+              "type": "boolean",
+              "value": false
+            },
+            {
+              "id": "error",
+              "name": "error",
+              "type": "string",
+              "value": "=Unknown operation: {{ $json.operation }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fdc9b622-2822-4cf6-90d5-a065373f371d",
+      "name": "Unknown Operation",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        672,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const op = $('Normalize Input').first().json.operation;\nconst rows = $input.all().map(i => i.json).filter(Boolean);\n// store returns a single id row; recall/search return arrays; unknown returns {ok:false,error}\nif (rows.length === 1 && rows[0].error) {\n  return [{ json: { ok: false, operation: op, error: rows[0].error } }];\n}\nif (op === 'store') {\n  return [{ json: { ok: true, operation: 'store', id: rows[0] ? rows[0].id : null } }];\n}\nreturn [{ json: { ok: true, operation: op, count: rows.length, results: rows } }];"
+      },
+      "id": "bfbb69d6-16bf-4599-81ff-074502591aea",
+      "name": "Format Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## AI OS — Memory Service\n**Reusable long-term memory (Postgres ai_os_memory).**\n\nInput: { operation, category, title, content, tags, source, importance, query, limit }\n- operation: `store` | `recall` | `search`\n- store: inserts a row (embedding_placeholder left NULL — future embedding hook)\n- recall: recent rows, optional category filter\n- search: keyword/tag ILIKE match (future: swap for pgvector nearest-neighbour)\n\nParameterized queries ($1,$2…) prevent SQL injection.",
+        "height": 200,
+        "width": 300
+      },
+      "id": "01d9ac42-5a6e-4636-91cc-77371944249a",
+      "name": "Sticky Note 01d9ac42",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        -48
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Memory Request": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Route Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Operation": {
+      "main": [
+        [
+          {
+            "node": "Store Memory",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recall Memory",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search Memory",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unknown Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Memory": {
+      "main": [
+        [
+          {
+            "node": "Collect",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect": {
+      "main": [
+        [
+          {
+            "node": "Format Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recall Memory": {
+      "main": [
+        [
+          {
+            "node": "Collect",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Search Memory": {
+      "main": [
+        [
+          {
+            "node": "Collect",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Unknown Operation": {
+      "main": [
+        [
+          {
+            "node": "Collect",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "e378614e-9fa8-4349-b5ca-60c11bb80f7a",
+  "meta": {
+    "instanceId": "9430d450e340198cded0b384039dea7636f952dc5d5febcdd94efc11e35053ab"
+  },
+  "nodeGroups": [],
+  "id": "LE4EjLdKzZO7x9Ti",
+  "tags": []
+}

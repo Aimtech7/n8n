@@ -1,0 +1,58 @@
+# fly.toml — Fly.io deployment configuration
+# Docs: https://fly.io/docs/reference/configuration/
+#
+# Deploy with:
+#   fly launch   (first time)
+#   fly deploy   (subsequent deploys)
+
+app = "n8n-yourname"        # Change to your unique app name
+primary_region = "jnb"     # Johannesburg — closest to Nairobi (EAF not available)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  N8N_HOST        = "0.0.0.0"
+  N8N_PORT        = "5678"
+  N8N_PROTOCOL    = "https"
+  NODE_ENV        = "production"
+  GENERIC_TIMEZONE = "Africa/Nairobi"
+
+# Secrets (set via CLI, never commit actual values):
+#   fly secrets set N8N_ENCRYPTION_KEY=your-32-char-key
+#   fly secrets set WEBHOOK_URL=https://your-app.fly.dev/
+
+[[services]]
+  protocol    = "tcp"
+  internal_port = 5678
+
+  [[services.ports]]
+    port     = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port     = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type       = "connections"
+    hard_limit = 100
+    soft_limit = 75
+
+  [[services.http_checks]]
+    interval      = 30000
+    timeout       = 10000
+    grace_period  = "30s"
+    method        = "GET"
+    path          = "/healthz"
+    protocol      = "http"
+
+[mounts]
+  source      = "n8n_data"
+  destination = "/home/node/.n8n"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory_mb = 512

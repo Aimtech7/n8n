@@ -1,0 +1,193 @@
+{
+  "name": "AI OS — Logging Service (sub-workflow)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "workflow"
+            },
+            {
+              "name": "module"
+            },
+            {
+              "name": "action"
+            },
+            {
+              "name": "status"
+            },
+            {
+              "name": "execution_time",
+              "type": "number"
+            },
+            {
+              "name": "error"
+            },
+            {
+              "name": "execution_id"
+            }
+          ]
+        }
+      },
+      "id": "9b334de0-df1f-4b23-86c0-1b245ef96990",
+      "name": "Log Request",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json || {};\nreturn [{ json: {\n  workflow: j.workflow || 'unknown',\n  module: j.module || 'unknown',\n  action: j.action || 'unknown',\n  status: j.status || 'unknown',\n  execution_time: (j.execution_time === undefined || j.execution_time === null || j.execution_time === '') ? 0 : j.execution_time,\n  error: j.error || '',\n  execution_id: j.execution_id || ''\n} }];"
+      },
+      "id": "058db477-af66-4fef-9b25-182f7bb34867",
+      "name": "Normalize Log Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ai_os_logs (workflow, module, action, status, execution_time, error) VALUES ($1, $2, $3, $4, $5, $6)",
+        "options": {
+          "queryReplacement": "={{ $json.workflow }},{{ $json.module }},{{ $json.action }},{{ $json.status }},{{ $json.execution_time }},{{ $json.error }}"
+        }
+      },
+      "id": "0cd1b3dc-3c39-484e-a3d8-b6c9166c29fa",
+      "name": "Insert Log Row",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        448,
+        0
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "pWWYe9VpyIDwRFN0",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ai_os_executions (id, workflow, status, finished, error) SELECT $1, $2, $3, now(), $4 WHERE $1 <> '' ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, finished = EXCLUDED.finished, error = EXCLUDED.error",
+        "options": {
+          "queryReplacement": "={{ $('Normalize Log Fields').item.json.execution_id }},{{ $('Normalize Log Fields').item.json.workflow }},{{ $('Normalize Log Fields').item.json.status }},{{ $('Normalize Log Fields').item.json.error }}"
+        }
+      },
+      "id": "7be2ee35-2f9b-4c17-8e8b-e5bd6ff48af9",
+      "name": "Upsert Execution History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        672,
+        0
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "pWWYe9VpyIDwRFN0",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\nconst ok = rows.some(r => r.json && (r.json.success === true || r.json.error === undefined));\nreturn [{ json: { logged: rows.length > 0, module: $('Normalize Log Fields').first().json.module } }];"
+      },
+      "id": "02b154d1-34f3-47d9-869a-62181977c63b",
+      "name": "Return Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## AI OS — Logging Service\n**Reusable by all modules via Execute Workflow.**\n\nInput fields (all optional):\n- workflow, module, action, status\n- execution_time (number, seconds/ms)\n- error (text)\n- execution_id (optional; upserts ai_os_executions)\n\nFail-soft: DB errors are swallowed (continue-on-fail); returns `{ logged }`. Tables ai_os_logs / ai_os_executions come from the Bootstrap workflow.",
+        "height": 200,
+        "width": 300
+      },
+      "id": "d0bdebb6-fcd2-4ea5-8638-9a84908b34f7",
+      "name": "Sticky Note d0bdebb6",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        -48
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Log Request": {
+      "main": [
+        [
+          {
+            "node": "Normalize Log Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Log Fields": {
+      "main": [
+        [
+          {
+            "node": "Insert Log Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Log Row": {
+      "main": [
+        [
+          {
+            "node": "Upsert Execution History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Execution History": {
+      "main": [
+        [
+          {
+            "node": "Return Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a1d199cc-7eb2-48a4-871f-b3047fb00964",
+  "meta": {
+    "instanceId": "9430d450e340198cded0b384039dea7636f952dc5d5febcdd94efc11e35053ab"
+  },
+  "nodeGroups": [],
+  "id": "WubIeHRaVN1BFMyg",
+  "tags": []
+}

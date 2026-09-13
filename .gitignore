@@ -1,2 +1,19 @@
-# Docker image layer blobs (too large for GitHub, not needed for deployment)
+# Docker image layer blobs (too large for GitHub)
 blobs/
+
+# Environment secrets
+.env
+
+# Local backups
+backups/
+
+# Node modules
+custom-nodes/node_modules/
+custom-nodes/dist/
+
+# SSL certs (never commit!)
+nginx/ssl/
+
+# OS
+.DS_Store
+Thumbs.db

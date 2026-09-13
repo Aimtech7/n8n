@@ -1,0 +1,60 @@
+name: Deploy n8n
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # allow manual trigger
+
+jobs:
+  # ── Lint & validate ─────────────────────────────────────────
+  validate:
+    name: Validate configs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Validate Kubernetes manifests
+        uses: azure/k8s-lint@v1
+        with:
+          manifests: |
+            k8s/namespace.yaml
+            k8s/configmap.yaml
+            k8s/pvc.yaml
+            k8s/deployment.yaml
+            k8s/service.yaml
+            k8s/ingress.yaml
+        continue-on-error: true   # don't block deploy if k8s lint isn't configured
+
+  # ── Deploy to Render.com ─────────────────────────────────────
+  deploy-render:
+    name: Deploy to Render
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger Render deploy hook
+        run: |
+          curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            --fail
+        # Set RENDER_DEPLOY_HOOK_URL in GitHub repo secrets:
+        # Render Dashboard → Service → Settings → Deploy Hooks → Create Hook
+
+  # ── Notify on success ────────────────────────────────────────
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [validate, deploy-render]
+    if: always()
+    steps:
+      - name: Report status
+        run: |
+          if [ "${{ needs.deploy-render.result }}" == "success" ]; then
+            echo "✅ Deploy succeeded"
+          else
+            echo "❌ Deploy failed or skipped"
+            exit 1
+          fi

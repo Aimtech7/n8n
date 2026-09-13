@@ -1,0 +1,54 @@
+# Docker Swarm stack file
+# Usage: docker stack deploy -c docker-compose.swarm.yml n8n
+#
+# Requires: docker swarm init (single node) or multi-node swarm
+
+version: "3.8"
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    ports:
+      - target: 5678
+        published: 5678
+        protocol: tcp
+        mode: ingress
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - GENERIC_TIMEZONE=Africa/Nairobi
+    secrets:
+      - n8n_encryption_key
+    volumes:
+      - n8n_data:/home/node/.n8n
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  n8n_data:
+    driver: local
+
+secrets:
+  n8n_encryption_key:
+    external: true
+    # Create with: echo "your-32-char-key" | docker secret create n8n_encryption_key -

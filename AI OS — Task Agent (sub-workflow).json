@@ -1,0 +1,828 @@
+{
+  "name": "AI OS — Task Agent (sub-workflow)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "request"
+            },
+            {
+              "name": "context"
+            }
+          ]
+        }
+      },
+      "id": "56e13bd6-eeac-4f2b-802b-36e0b382b2c1",
+      "name": "Agent Request",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "req",
+              "leftValue": "={{ $json.request }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a505fec4-94b1-4ab1-9546-5d2a80022a11",
+      "name": "Has Request?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Request: {{ $json.request }}\nContext: {{ $json.context }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are the Task Agent for an AI OS. Classify the intent and extract fields.\n- create: new task. Fill title, description, priority (low|medium|high), owner, deadline (ISO date if given).\n- list: user wants to see tasks. Fill status/owner if implied.\n- update: change a task. Fill task_id plus fields to change.\n- complete: mark a task done. Fill task_id.\nDeadlines: output ISO 8601 (YYYY-MM-DD) when a date is stated. Return valid JSON matching the schema."
+        }
+      },
+      "id": "f88f6553-658a-4bb4-9277-93e7a87e893a",
+      "name": "Task Reasoner",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        448,
+        288
+      ],
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "910a349d-2df7-4b9b-a10d-af6bb8c0b286",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        464,
+        512
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "j2N4GMYhnw7tuY2i",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\"type\":\"object\",\"properties\":{\"intent\":{\"type\":\"string\",\"enum\":[\"create\",\"list\",\"update\",\"complete\"]},\"task_id\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"description\":{\"type\":\"string\"},\"priority\":{\"type\":\"string\",\"enum\":[\"low\",\"medium\",\"high\"]},\"status\":{\"type\":\"string\"},\"owner\":{\"type\":\"string\"},\"deadline\":{\"type\":\"string\"}},\"required\":[\"intent\"]}"
+      },
+      "id": "084c4952-ea39-43ce-99eb-9f8b3d08da3c",
+      "name": "Task Intent Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        592,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const o = ($input.first().json.output) || {};\nconst rand = Math.random().toString(36).slice(2, 8);\nconst task_id = o.task_id && o.task_id.length ? o.task_id : ('T-' + Date.now().toString(36) + '-' + rand);\nreturn [{ json: {\n  intent: (o.intent || '').toLowerCase(),\n  task_id,\n  title: o.title || '',\n  description: o.description || '',\n  priority: o.priority || 'medium',\n  status: o.status || '',\n  owner: o.owner || '',\n  deadline: o.deadline || ''\n} }];"
+      },
+      "id": "1520fcd7-6cc3-4261-b6be-a3379263ce34",
+      "name": "Prep Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "create",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "create"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "list",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "list"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "update"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "complete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "complete"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "unknown"
+        }
+      },
+      "id": "4b0010a2-b56a-4696-b6f2-ec8ea17c0bc6",
+      "name": "Route Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1024,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ai_os_tasks (task_id, title, description, priority, status, owner, deadline) VALUES ($1, $2, $3, $4, 'open', $5, NULLIF($6, '')::timestamptz) RETURNING *",
+        "options": {
+          "queryReplacement": "={{ $json.task_id }},{{ $json.title }},{{ $json.description }},{{ $json.priority }},{{ $json.owner }},{{ $json.deadline }}"
+        }
+      },
+      "id": "4e4abb6a-e4d8-48b1-a4e0-6e6a592dac88",
+      "name": "Create Task",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1248,
+        0
+      ],
+      "retryOnFail": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "pWWYe9VpyIDwRFN0",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 5
+      },
+      "id": "06e3803f-694a-4977-96cd-67ace633023e",
+      "name": "Collect",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1472,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM ai_os_tasks WHERE ($1 = '' OR status = $1) AND ($2 = '' OR owner = $2) ORDER BY created DESC LIMIT 50",
+        "options": {
+          "queryReplacement": "={{ $json.status }},{{ $json.owner }}"
+        }
+      },
+      "id": "63aa6793-ef2b-4d4c-b8f0-180e85857f73",
+      "name": "List Tasks",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1248,
+        192
+      ],
+      "retryOnFail": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "pWWYe9VpyIDwRFN0",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ai_os_tasks SET title = COALESCE(NULLIF($2,''), title), description = COALESCE(NULLIF($3,''), description), priority = COALESCE(NULLIF($4,''), priority), status = COALESCE(NULLIF($5,''), status), owner = COALESCE(NULLIF($6,''), owner), deadline = COALESCE(NULLIF($7,'')::timestamptz, deadline) WHERE task_id = $1 RETURNING *",
+        "options": {
+          "queryReplacement": "={{ $json.task_id }},{{ $json.title }},{{ $json.description }},{{ $json.priority }},{{ $json.status }},{{ $json.owner }},{{ $json.deadline }}"
+        }
+      },
+      "id": "ea08067b-28f3-49f5-ae81-04fd7451b3d3",
+      "name": "Update Task",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1248,
+        384
+      ],
+      "retryOnFail": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "pWWYe9VpyIDwRFN0",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ai_os_tasks SET status = 'done', completed = now() WHERE task_id = $1 RETURNING *",
+        "options": {
+          "queryReplacement": "={{ $json.task_id }}"
+        }
+      },
+      "id": "218f4556-3e48-49b3-9be5-ac63f8879231",
+      "name": "Complete Task",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1248,
+        576
+      ],
+      "retryOnFail": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "pWWYe9VpyIDwRFN0",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ok",
+              "name": "ok",
+              "type": "boolean",
+              "value": false
+            },
+            {
+              "id": "error",
+              "name": "error",
+              "type": "string",
+              "value": "=Unknown intent: {{ $json.intent }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "816d8251-c2e5-47b1-b35f-00b66a7bcf3e",
+      "name": "Unknown Intent",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1248,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ok",
+              "name": "ok",
+              "type": "boolean",
+              "value": false
+            },
+            {
+              "id": "reply",
+              "name": "reply",
+              "type": "string",
+              "value": "No request provided."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a137d6db-c6a7-4155-9553-b0f05874d720",
+      "name": "Invalid Request Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        512,
+        688
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "WubIeHRaVN1BFMyg",
+          "cachedResultName": "AI OS — Logging Service (sub-workflow)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow": "AI OS — Task Agent",
+            "module": "tasks",
+            "action": "={{ $(\"Prep Fields\").item.json.intent }}",
+            "status": "success",
+            "error": ""
+          },
+          "schema": [
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "type": "string"
+            },
+            {
+              "id": "module",
+              "displayName": "module",
+              "type": "string"
+            },
+            {
+              "id": "action",
+              "displayName": "action",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string"
+            },
+            {
+              "id": "error",
+              "displayName": "error",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a5fda318-c789-49de-a0db-b2b2536f1a32",
+      "name": "Log Action",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1696,
+        240
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "intent",
+              "leftValue": "={{ $(\"Prep Fields\").item.json.intent }}",
+              "rightValue": "create",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "prio",
+              "leftValue": "={{ $(\"Prep Fields\").item.json.priority }}",
+              "rightValue": "high",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e3285c4a-7db0-4276-bb93-d6145010754e",
+      "name": "High-Priority New Task?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "M9uMLIxBTyGvGuE3",
+          "cachedResultName": "AI OS — Notification Service (sub-workflow)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "channel": "telegram",
+            "to": "",
+            "subject": "New high-priority task",
+            "message": "=New high-priority task created: {{ $(\"Prep Fields\").item.json.title }} (deadline {{ $(\"Prep Fields\").item.json.deadline }})"
+          },
+          "schema": [
+            {
+              "id": "channel",
+              "displayName": "channel",
+              "type": "string"
+            },
+            {
+              "id": "to",
+              "displayName": "to",
+              "type": "string"
+            },
+            {
+              "id": "subject",
+              "displayName": "subject",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "975b0ad2-b59a-4ff3-a79b-d7393d1f7682",
+      "name": "Notify High Priority",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        2144,
+        192
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const intent = $('Prep Fields').first().json.intent;\nconst rows = $('Collect').all().map(i => i.json).filter(Boolean);\nlet reply;\nif (rows.length && rows[0].error) reply = 'Task operation failed: ' + rows[0].error;\nelse if (intent === 'create') reply = 'Created task ' + (rows[0] ? rows[0].task_id : '') + '.';\nelse if (intent === 'list') reply = 'Found ' + rows.length + ' task(s).';\nelse if (intent === 'complete') reply = 'Marked task complete.';\nelse if (intent === 'update') reply = 'Task updated.';\nelse reply = 'Done.';\nreturn [{ json: { ok: !(rows.length && rows[0].error), intent, reply, tasks: rows } }];"
+      },
+      "id": "10242539-b8e4-4b15-832c-d8fb044636a5",
+      "name": "Format Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2368,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## AI OS — Task Agent\nStandard sections: Trigger → Validation → AI Reasoning → Execution (Postgres by intent) → Logging → Notification (high-priority creates) → Result.\nReuses Logging Service (WubIeHRaVN1BFMyg) and Notification Service (M9uMLIxBTyGvGuE3). Backed by ai_os_tasks (Bootstrap).",
+        "height": 200,
+        "width": 300
+      },
+      "id": "0e74a103-67f9-4b58-97e7-4541282e200c",
+      "name": "Sticky Note 0e74a103",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        -48
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Agent Request": {
+      "main": [
+        [
+          {
+            "node": "Has Request?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Request?": {
+      "main": [
+        [
+          {
+            "node": "Task Reasoner",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid Request Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Task Reasoner": {
+      "main": [
+        [
+          {
+            "node": "Prep Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Task Reasoner",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Task Intent Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Task Reasoner",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Fields": {
+      "main": [
+        [
+          {
+            "node": "Route Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Intent": {
+      "main": [
+        [
+          {
+            "node": "Create Task",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "List Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Task",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Complete Task",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unknown Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Task": {
+      "main": [
+        [
+          {
+            "node": "Collect",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect": {
+      "main": [
+        [
+          {
+            "node": "Log Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Tasks": {
+      "main": [
+        [
+          {
+            "node": "Collect",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Update Task": {
+      "main": [
+        [
+          {
+            "node": "Collect",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Complete Task": {
+      "main": [
+        [
+          {
+            "node": "Collect",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Unknown Intent": {
+      "main": [
+        [
+          {
+            "node": "Collect",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "Log Action": {
+      "main": [
+        [
+          {
+            "node": "High-Priority New Task?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "High-Priority New Task?": {
+      "main": [
+        [
+          {
+            "node": "Notify High Priority",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify High Priority": {
+      "main": [
+        [
+          {
+            "node": "Format Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a37f64a0-9c00-40af-b822-668d8039edf8",
+  "meta": {
+    "instanceId": "9430d450e340198cded0b384039dea7636f952dc5d5febcdd94efc11e35053ab"
+  },
+  "nodeGroups": [],
+  "id": "tiQfwvLTkgBX3Hzf",
+  "tags": []
+}

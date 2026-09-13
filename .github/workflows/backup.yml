@@ -1,0 +1,43 @@
+name: Scheduled Backup
+
+on:
+  schedule:
+    - cron: "0 2 * * *"   # Every day at 2AM UTC
+  workflow_dispatch:        # allow manual trigger
+
+jobs:
+  backup:
+    name: Backup n8n data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        if: env.AWS_ACCESS_KEY_ID != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+
+      - name: Run backup via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/n8n
+            S3_BUCKET=${{ secrets.S3_BUCKET }} bash scripts/backup.sh
+        # Required secrets:
+        #   SSH_HOST         - your server IP or hostname
+        #   SSH_USER         - SSH username (e.g., ubuntu)
+        #   SSH_PRIVATE_KEY  - private key for SSH auth
+        #   S3_BUCKET        - (optional) s3://your-bucket/n8n-backups
+        #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY - for S3 uploads
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "❌ Backup failed! Check the logs."

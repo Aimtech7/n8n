@@ -1,0 +1,31 @@
+{
+  "name": "n8n-nodes-custom",
+  "version": "0.1.0",
+  "description": "Custom n8n nodes for this deployment",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc && gulp build:icons",
+    "dev": "tsc --watch",
+    "lint": "eslint nodes --ext .ts",
+    "prepublishOnly": "npm run build"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [],
+    "nodes": [
+      "dist/nodes/ExampleNode/ExampleNode.node.js"
+    ]
+  },
+  "keywords": [
+    "n8n-community-node-package"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "n8n-workflow": "*",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}
