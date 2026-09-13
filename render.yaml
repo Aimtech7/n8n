@@ -5,11 +5,16 @@ services:
     dockerfilePath: ./Dockerfile
     plan: starter
     healthCheckPath: /healthz
+    # Render injects $PORT — n8n must bind to it, not a hardcoded port.
+    # The startCommand overrides the image entrypoint to pass $PORT at runtime.
+    startCommand: n8n start --port $PORT
     envVars:
       - key: N8N_HOST
         value: 0.0.0.0
+      # N8N_PORT is set dynamically from $PORT by startCommand above;
+      # we still export it so n8n's internal URL builder is consistent.
       - key: N8N_PORT
-        value: 5678
+        fromValue: $PORT
       - key: N8N_PROTOCOL
         value: https
       - key: NODE_ENV
@@ -42,6 +47,8 @@ services:
         fromDatabase:
           name: n8n-db
           property: password
+      - key: DB_POSTGRESDB_SCHEMA
+        value: public
       - key: EXECUTIONS_DATA_PRUNE
         value: "true"
       - key: EXECUTIONS_DATA_MAX_AGE
