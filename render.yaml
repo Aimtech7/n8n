@@ -44,6 +44,9 @@ services:
           property: password
       - key: DB_POSTGRESDB_SCHEMA
         value: public
+      # Render's managed PostgreSQL enforces SSL — allow it without a CA cert
+      - key: DB_POSTGRESDB_SSL_REJECT_UNAUTHORIZED
+        value: "false"
       - key: EXECUTIONS_DATA_PRUNE
         value: "true"
       - key: EXECUTIONS_DATA_MAX_AGE
