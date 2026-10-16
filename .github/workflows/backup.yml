@@ -2,8 +2,11 @@ name: Scheduled Backup
 
 on:
   schedule:
-    - cron: "0 2 * * *"   # Every day at 2AM UTC
-  workflow_dispatch:        # allow manual trigger
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   backup:
@@ -12,8 +15,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check SSH configuration
+        id: ssh
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          if [[ -z "$SSH_HOST" || -z "$SSH_USER" || -z "$SSH_PRIVATE_KEY" ]]; then
+            echo "::warning::n8n SSH backup skipped: configure SSH_HOST, SSH_USER and SSH_PRIVATE_KEY for an active backup server."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Configure AWS credentials
-        if: env.AWS_ACCESS_KEY_ID != ''
+        if: steps.ssh.outputs.configured == 'true' && env.AWS_ACCESS_KEY_ID != ''
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -23,6 +41,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
 
       - name: Run backup via SSH
+        if: steps.ssh.outputs.configured == 'true'
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -31,13 +50,7 @@ jobs:
           script: |
             cd /opt/n8n
             S3_BUCKET=${{ secrets.S3_BUCKET }} bash scripts/backup.sh
-        # Required secrets:
-        #   SSH_HOST         - your server IP or hostname
-        #   SSH_USER         - SSH username (e.g., ubuntu)
-        #   SSH_PRIVATE_KEY  - private key for SSH auth
-        #   S3_BUCKET        - (optional) s3://your-bucket/n8n-backups
-        #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY - for S3 uploads
 
       - name: Notify on failure
         if: failure()
-        run: echo "❌ Backup failed! Check the logs."
+        run: echo "Backup failed; inspect the workflow logs."
